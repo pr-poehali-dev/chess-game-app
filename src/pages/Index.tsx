@@ -86,6 +86,14 @@ const Index = () => {
   const [activeTab, setActiveTab] = useState('board');
   const [currentPlayer, setCurrentPlayer] = useState<PieceColor>('white');
   const [validMoves, setValidMoves] = useState<[number, number][]>([]);
+  const [lastMove, setLastMove] = useState<{ from: [number, number], to: [number, number] } | null>(null);
+  const [kingMoved, setKingMoved] = useState({ white: false, black: false });
+  const [rookMoved, setRookMoved] = useState({
+    whiteKingSide: false,
+    whiteQueenSide: false,
+    blackKingSide: false,
+    blackQueenSide: false
+  });
 
   const isValidMove = (fromRow: number, fromCol: number, toRow: number, toCol: number): boolean => {
     const piece = board[fromRow][fromCol];
@@ -101,6 +109,7 @@ const Index = () => {
       case 'pawn': {
         const direction = piece.color === 'white' ? -1 : 1;
         const startRow = piece.color === 'white' ? 6 : 1;
+        const enPassantRow = piece.color === 'white' ? 3 : 4;
         
         if (colDiff === 0 && !targetPiece) {
           if (rowDiff === direction) return true;
@@ -108,6 +117,18 @@ const Index = () => {
         }
         
         if (Math.abs(colDiff) === 1 && rowDiff === direction && targetPiece) return true;
+        
+        if (Math.abs(colDiff) === 1 && rowDiff === direction && !targetPiece && fromRow === enPassantRow) {
+          if (lastMove &&
+              lastMove.to[0] === fromRow &&
+              lastMove.to[1] === toCol &&
+              board[fromRow][toCol]?.type === 'pawn' &&
+              board[fromRow][toCol]?.color !== piece.color &&
+              Math.abs(lastMove.from[0] - lastMove.to[0]) === 2) {
+            return true;
+          }
+        }
+        
         return false;
       }
       
@@ -133,8 +154,38 @@ const Index = () => {
         }
         return false;
       
-      case 'king':
-        return Math.abs(rowDiff) <= 1 && Math.abs(colDiff) <= 1;
+      case 'king': {
+        if (Math.abs(rowDiff) <= 1 && Math.abs(colDiff) <= 1) return true;
+        
+        if (!kingMoved[piece.color] && rowDiff === 0 && Math.abs(colDiff) === 2) {
+          const kingRow = piece.color === 'white' ? 7 : 0;
+          if (fromRow !== kingRow) return false;
+          
+          if (colDiff === 2) {
+            const rookCol = 7;
+            const rookMoveKey = piece.color === 'white' ? 'whiteKingSide' : 'blackKingSide';
+            if (!rookMoved[rookMoveKey] &&
+                board[kingRow][rookCol]?.type === 'rook' &&
+                board[kingRow][rookCol]?.color === piece.color &&
+                !board[kingRow][5] && !board[kingRow][6]) {
+              return true;
+            }
+          }
+          
+          if (colDiff === -2) {
+            const rookCol = 0;
+            const rookMoveKey = piece.color === 'white' ? 'whiteQueenSide' : 'blackQueenSide';
+            if (!rookMoved[rookMoveKey] &&
+                board[kingRow][rookCol]?.type === 'rook' &&
+                board[kingRow][rookCol]?.color === piece.color &&
+                !board[kingRow][1] && !board[kingRow][2] && !board[kingRow][3]) {
+              return true;
+            }
+          }
+        }
+        
+        return false;
+      }
       
       default:
         return false;
@@ -175,8 +226,35 @@ const Index = () => {
       
       if (isValidMove(selectedRow, selectedCol, row, col)) {
         const newBoard = board.map(r => [...r]);
+        const piece = newBoard[selectedRow][selectedCol];
+        
+        if (piece?.type === 'king' && Math.abs(col - selectedCol) === 2) {
+          const rookFromCol = col > selectedCol ? 7 : 0;
+          const rookToCol = col > selectedCol ? 5 : 3;
+          newBoard[row][rookToCol] = newBoard[row][rookFromCol];
+          newBoard[row][rookFromCol] = null;
+        }
+        
+        if (piece?.type === 'pawn' && Math.abs(col - selectedCol) === 1 && !newBoard[row][col]) {
+          newBoard[selectedRow][col] = null;
+        }
+        
         newBoard[row][col] = newBoard[selectedRow][selectedCol];
         newBoard[selectedRow][selectedCol] = null;
+        
+        setLastMove({ from: [selectedRow, selectedCol], to: [row, col] });
+        
+        if (piece?.type === 'king') {
+          setKingMoved(prev => ({ ...prev, [piece.color]: true }));
+        }
+        
+        if (piece?.type === 'rook') {
+          if (selectedRow === 7 && selectedCol === 0) setRookMoved(prev => ({ ...prev, whiteQueenSide: true }));
+          if (selectedRow === 7 && selectedCol === 7) setRookMoved(prev => ({ ...prev, whiteKingSide: true }));
+          if (selectedRow === 0 && selectedCol === 0) setRookMoved(prev => ({ ...prev, blackQueenSide: true }));
+          if (selectedRow === 0 && selectedCol === 7) setRookMoved(prev => ({ ...prev, blackKingSide: true }));
+        }
+        
         setBoard(newBoard);
         setCurrentPlayer(currentPlayer === 'white' ? 'black' : 'white');
       }
