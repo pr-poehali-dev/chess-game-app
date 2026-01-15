@@ -84,17 +84,108 @@ const Index = () => {
   const [board, setBoard] = useState<Board>(initialBoard);
   const [selectedSquare, setSelectedSquare] = useState<[number, number] | null>(null);
   const [activeTab, setActiveTab] = useState('board');
+  const [currentPlayer, setCurrentPlayer] = useState<PieceColor>('white');
+  const [validMoves, setValidMoves] = useState<[number, number][]>([]);
+
+  const isValidMove = (fromRow: number, fromCol: number, toRow: number, toCol: number): boolean => {
+    const piece = board[fromRow][fromCol];
+    if (!piece) return false;
+
+    const rowDiff = toRow - fromRow;
+    const colDiff = toCol - fromCol;
+    const targetPiece = board[toRow][toCol];
+
+    if (targetPiece && targetPiece.color === piece.color) return false;
+
+    switch (piece.type) {
+      case 'pawn': {
+        const direction = piece.color === 'white' ? -1 : 1;
+        const startRow = piece.color === 'white' ? 6 : 1;
+        
+        if (colDiff === 0 && !targetPiece) {
+          if (rowDiff === direction) return true;
+          if (fromRow === startRow && rowDiff === direction * 2 && !board[fromRow + direction][fromCol]) return true;
+        }
+        
+        if (Math.abs(colDiff) === 1 && rowDiff === direction && targetPiece) return true;
+        return false;
+      }
+      
+      case 'rook':
+        if (rowDiff === 0 || colDiff === 0) {
+          return isPathClear(fromRow, fromCol, toRow, toCol);
+        }
+        return false;
+      
+      case 'knight':
+        return (Math.abs(rowDiff) === 2 && Math.abs(colDiff) === 1) || 
+               (Math.abs(rowDiff) === 1 && Math.abs(colDiff) === 2);
+      
+      case 'bishop':
+        if (Math.abs(rowDiff) === Math.abs(colDiff)) {
+          return isPathClear(fromRow, fromCol, toRow, toCol);
+        }
+        return false;
+      
+      case 'queen':
+        if (rowDiff === 0 || colDiff === 0 || Math.abs(rowDiff) === Math.abs(colDiff)) {
+          return isPathClear(fromRow, fromCol, toRow, toCol);
+        }
+        return false;
+      
+      case 'king':
+        return Math.abs(rowDiff) <= 1 && Math.abs(colDiff) <= 1;
+      
+      default:
+        return false;
+    }
+  };
+
+  const isPathClear = (fromRow: number, fromCol: number, toRow: number, toCol: number): boolean => {
+    const rowDir = toRow > fromRow ? 1 : toRow < fromRow ? -1 : 0;
+    const colDir = toCol > fromCol ? 1 : toCol < fromCol ? -1 : 0;
+    
+    let currentRow = fromRow + rowDir;
+    let currentCol = fromCol + colDir;
+    
+    while (currentRow !== toRow || currentCol !== toCol) {
+      if (board[currentRow][currentCol] !== null) return false;
+      currentRow += rowDir;
+      currentCol += colDir;
+    }
+    
+    return true;
+  };
+
+  const getValidMovesForPiece = (row: number, col: number): [number, number][] => {
+    const moves: [number, number][] = [];
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        if (isValidMove(row, col, r, c)) {
+          moves.push([r, c]);
+        }
+      }
+    }
+    return moves;
+  };
 
   const handleSquareClick = (row: number, col: number) => {
     if (selectedSquare) {
       const [selectedRow, selectedCol] = selectedSquare;
-      const newBoard = board.map(r => [...r]);
-      newBoard[row][col] = newBoard[selectedRow][selectedCol];
-      newBoard[selectedRow][selectedCol] = null;
-      setBoard(newBoard);
+      
+      if (isValidMove(selectedRow, selectedCol, row, col)) {
+        const newBoard = board.map(r => [...r]);
+        newBoard[row][col] = newBoard[selectedRow][selectedCol];
+        newBoard[selectedRow][selectedCol] = null;
+        setBoard(newBoard);
+        setCurrentPlayer(currentPlayer === 'white' ? 'black' : 'white');
+      }
+      
       setSelectedSquare(null);
-    } else if (board[row][col]) {
+      setValidMoves([]);
+    } else if (board[row][col] && board[row][col]!.color === currentPlayer) {
       setSelectedSquare([row, col]);
+      setValidMoves(getValidMovesForPiece(row, col));
     }
   };
 
@@ -128,14 +219,19 @@ const Index = () => {
               <p className="text-muted-foreground text-lg">Играй. Учись. Побеждай.</p>
             </div>
             <div className="flex gap-3">
-              <Button size="lg" className="bg-gradient-to-r from-primary to-secondary hover:opacity-90 transition-opacity">
-                <Icon name="Play" size={20} className="mr-2" />
-                Быстрая игра
-              </Button>
-              <Button size="lg" variant="outline" className="border-primary/30">
-                <Icon name="Users" size={20} className="mr-2" />
-                Онлайн
-              </Button>
+              <div className="flex items-center gap-4">
+                <Badge className="text-lg py-2 px-4 bg-accent/20 text-accent border-accent/30">
+                  Ход: {currentPlayer === 'white' ? 'Белые' : 'Чёрные'}
+                </Badge>
+                <Button size="lg" className="bg-gradient-to-r from-primary to-secondary hover:opacity-90 transition-opacity">
+                  <Icon name="Play" size={20} className="mr-2" />
+                  Быстрая игра
+                </Button>
+                <Button size="lg" variant="outline" className="border-primary/30">
+                  <Icon name="Users" size={20} className="mr-2" />
+                  Онлайн
+                </Button>
+              </div>
             </div>
           </div>
         </header>
@@ -174,18 +270,23 @@ const Index = () => {
                         row.map((piece, colIndex) => {
                           const isLight = (rowIndex + colIndex) % 2 === 0;
                           const isSelected = selectedSquare && selectedSquare[0] === rowIndex && selectedSquare[1] === colIndex;
+                          const isValidMoveSquare = validMoves.some(([r, c]) => r === rowIndex && c === colIndex);
                           return (
                             <button
                               key={`${rowIndex}-${colIndex}`}
                               onClick={() => handleSquareClick(rowIndex, colIndex)}
                               className={`
-                                w-16 h-16 flex items-center justify-center text-5xl transition-all duration-200
+                                w-16 h-16 flex items-center justify-center text-5xl transition-all duration-200 relative
                                 ${isLight ? 'bg-primary/20' : 'bg-primary/40'}
                                 ${isSelected ? 'ring-4 ring-accent scale-95' : 'hover:scale-105 hover:shadow-lg'}
-                                ${piece ? 'cursor-pointer' : ''}
+                                ${isValidMoveSquare ? 'ring-2 ring-green-400' : ''}
+                                ${piece && piece.color === currentPlayer ? 'cursor-pointer' : ''}
                               `}
                             >
                               {piece && pieceEmojis[`${piece.color}-${piece.type}`]}
+                              {isValidMoveSquare && !piece && (
+                                <div className="absolute w-3 h-3 bg-green-400 rounded-full" />
+                              )}
                             </button>
                           );
                         })
