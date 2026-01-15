@@ -361,7 +361,9 @@ const Index = () => {
                                 ${piece && piece.color === currentPlayer ? 'cursor-pointer' : ''}
                               `}
                             >
-                              {piece && pieceEmojis[`${piece.color}-${piece.type}`]}
+                              <span className={piece?.color === 'black' ? 'text-gray-900' : ''}>
+                                {piece && pieceEmojis[`${piece.color}-${piece.type}`]}
+                              </span>
                               {isValidMoveSquare && !piece && (
                                 <div className="absolute w-3 h-3 bg-green-400 rounded-full" />
                               )}
